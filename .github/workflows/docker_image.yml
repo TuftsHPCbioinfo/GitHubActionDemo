@@ -1,11 +1,14 @@
 name: Build & Publish Docker Image
 
 on:
+  workflow_dispatch:
   release:
     types: [published]
   push:
     branches:
       - main
+    tags:
+      - "v*"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -60,9 +63,10 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          platforms: linux/amd64,linux/arm64    # ← ADD THIS
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
+          provenance: false
           build-args: |
             GPAT=${{ secrets.GPAT }}
           cache-from: type=gha
