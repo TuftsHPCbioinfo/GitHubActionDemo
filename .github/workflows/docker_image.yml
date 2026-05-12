@@ -31,7 +31,9 @@ jobs:
         run: |
           git fetch --tags
           LATEST=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          DOCKER_TAG="${LATEST#v}"
           echo "value=${LATEST}" >> $GITHUB_OUTPUT
+          echo "docker_value=${DOCKER_TAG}" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU                          
         uses: docker/setup-qemu-action@v3
@@ -53,7 +55,7 @@ jobs:
             tuftsttsrt/rstudio
           tags: |
             type=semver,pattern={{version}}
-            type=raw,value=${{ steps.latest_tag.outputs.value }},enable=${{ github.event_name == 'push' && steps.latest_tag.outputs.value != '' }}
+            type=raw,value=${{ steps.latest_tag.outputs.docker_value }},enable=${{ github.event_name == 'push' && steps.latest_tag.outputs.docker_value != '' }}
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=sha-,format=short
 

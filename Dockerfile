@@ -12,3 +12,6 @@ RUN echo "session-timeout-minutes=0" >> /etc/rstudio/rsession.conf && \
 # Set CRAN mirror globally
 RUN echo 'options(repos = c(CRAN = "https://cloud.r-project.org"))' \
     >> /usr/local/lib/R/etc/Rprofile.site
+
+# Install demo R packages
+RUN Rscript -e "install.packages(c('here', 'janitor'))"
