@@ -1,42 +1,15 @@
 name: Build & Publish Docker Image
 
 on:
-  workflow_dispatch:
   release:
     types: [published]
-  push:
-    branches:
-      - main
-    tags:
-      - "v*"
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   push-to-dockerhub:
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-      contents: read
-
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Get latest release tag
-        id: latest_tag
-        run: |
-          git fetch --tags
-          LATEST=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          DOCKER_TAG="${LATEST#v}"
-          echo "value=${LATEST}" >> $GITHUB_OUTPUT
-          echo "docker_value=${DOCKER_TAG}" >> $GITHUB_OUTPUT
-
-      - name: Set up QEMU                          
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -51,25 +24,18 @@ jobs:
         id: metadata
         uses: docker/metadata-action@v5
         with:
-          images: |
-            tuftsttsrt/rstudio
+          images: tuftsttsrt/rstudio
           tags: |
             type=semver,pattern={{version}}
-            type=raw,value=${{ steps.latest_tag.outputs.docker_value }},enable=${{ github.event_name == 'push' && steps.latest_tag.outputs.docker_value != '' }}
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-,format=short
+            type=raw,value=latest
 
       - name: Build & Publish Docker Image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/arm64
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
-          provenance: false
           build-args: |
             GPAT=${{ secrets.GPAT }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
