@@ -39,3 +39,5 @@ jobs:
           labels: ${{ steps.metadata.outputs.labels }}
           build-args: |
             GPAT=${{ secrets.GPAT }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
