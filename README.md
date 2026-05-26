@@ -1,6 +1,6 @@
 # Automating Container Builds with GitHub Actions: From Code to Docker Hub
 
-> Demo repository for the TTS Summit 2026 talk (50 min)  
+> Demo repository for the TTS Summit 2026 talk 
 > **Presenter**: Yucheng Zhang, Tufts University  
 > **Docker Hub image**: [`tuftsttsrt/rstudio`](https://hub.docker.com/r/tuftsttsrt/rstudio)
 
