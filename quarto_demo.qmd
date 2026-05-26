@@ -1,0 +1,299 @@
+---
+title: "Tidyverse in Action"
+subtitle: "A hands-on demo with ggplot2, dplyr, tidyr & more"
+author: "Workshop Demo"
+date: today
+format:
+  html:
+    theme: flatly
+    toc: true
+    toc-depth: 3
+    toc-title: "Contents"
+    code-fold: false
+    code-tools: true
+    highlight-style: github
+    fig-width: 9
+    fig-height: 5.5
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+---
+
+# Setup
+
+Load the tidyverse — this brings in **ggplot2**, **dplyr**, **tidyr**, **readr**, **stringr**, **forcats**, and more.
+
+```{r}
+library(tidyverse)
+```
+
+---
+
+# 1. The Dataset
+
+We build a realistic sales dataset from scratch — no external files needed.
+
+```{r}
+set.seed(42)
+
+products   <- c("Laptop", "Tablet", "Phone", "Monitor", "Keyboard")
+regions    <- c("North", "South", "East", "West")
+months     <- seq(as.Date("2023-01-01"), as.Date("2023-12-01"), by = "month")
+base_price <- c(Laptop = 1200, Tablet = 450, Phone = 800, Monitor = 350, Keyboard = 80)
+
+sales_raw <- expand_grid(month = months, product = products, region = regions) |>
+  mutate(
+    units = rpois(n(), lambda = case_when(
+      product == "Keyboard" ~ 60,
+      product == "Phone"    ~ 45,
+      product == "Tablet"   ~ 30,
+      product == "Monitor"  ~ 20,
+      TRUE                  ~ 15)),
+    units      = as.integer(units * if_else(month(month) %in% 10:12, 1.4, 1)),
+    price      = base_price[product] * runif(n(), 0.92, 1.08),
+    revenue    = units * price,
+    category   = case_when(
+      product %in% c("Laptop", "Monitor") ~ "Computing",
+      product %in% c("Phone",  "Tablet")  ~ "Mobile",
+      TRUE                                ~ "Accessories"),
+    margin_pct = case_when(
+      category == "Computing"   ~ runif(n(), 0.18, 0.28),
+      category == "Mobile"      ~ runif(n(), 0.22, 0.35),
+      TRUE                      ~ runif(n(), 0.35, 0.55))
+  )
+
+glimpse(sales_raw)
+```
+
+---
+
+# 2. Data Wrangling with `dplyr`
+
+## 2.1 Summary by Product
+
+```{r}
+product_summary <- sales_raw |>
+  group_by(product, category) |>
+  summarise(
+    total_revenue = sum(revenue),
+    total_units   = sum(units),
+    avg_price     = mean(price),
+    avg_margin    = mean(margin_pct),
+    .groups = "drop"
+  ) |>
+  arrange(desc(total_revenue))
+
+product_summary
+```
+
+## 2.2 Monthly Trends
+
+```{r}
+monthly <- sales_raw |>
+  group_by(month, category) |>
+  summarise(revenue = sum(revenue), units = sum(units), .groups = "drop")
+
+monthly |> slice_head(n = 8)
+```
+
+## 2.3 Pivoting with `tidyr`
+
+```{r}
+sales_raw |>
+  group_by(product, region) |>
+  summarise(revenue = sum(revenue), .groups = "drop") |>
+  pivot_wider(names_from = region, values_from = revenue) |>
+  mutate(across(where(is.numeric), \(x) scales::dollar(x, scale = 1e-3, suffix = "k")))
+```
+
+---
+
+# 3. Visualisation with `ggplot2`
+
+## 3.1 Revenue by Product — Bar Chart
+
+```{r}
+product_summary |>
+  mutate(product = fct_reorder(product, total_revenue)) |>
+  ggplot(aes(x = total_revenue, y = product, fill = category)) +
+  geom_col(width = 0.65) +
+  geom_text(aes(label = scales::dollar(total_revenue, scale = 1e-3, suffix = "k")),
+            hjust = -0.1, size = 3.5, fontface = "bold") +
+  scale_x_continuous(
+    labels = scales::dollar_format(scale = 1e-3, suffix = "k"),
+    expand = expansion(mult = c(0, 0.18))
+  ) +
+  scale_fill_manual(values = c(Computing = "#2D6A4F", Mobile = "#52B788",
+                               Accessories = "#B7E4C7")) +
+  labs(title = "Total Annual Revenue by Product",
+       subtitle = "Laptops lead despite lower unit volume",
+       x = "Revenue (USD)", y = NULL, fill = "Category") +
+  theme_minimal(base_size = 13) +
+  theme(plot.title = element_text(face = "bold"),
+        panel.grid.major.y = element_blank(),
+        legend.position = "bottom")
+```
+
+## 3.2 Monthly Revenue Trend — Line Chart
+
+```{r}
+monthly |>
+  ggplot(aes(x = month, y = revenue, color = category, group = category)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2.5) +
+  annotate("rect", xmin = as.Date("2023-10-01"), xmax = as.Date("2023-12-31"),
+           ymin = -Inf, ymax = Inf, alpha = 0.08, fill = "#F4A261") +
+  annotate("text", x = as.Date("2023-11-01"), y = Inf,
+           label = "Q4 Boost", vjust = 2, size = 3.5, color = "#E76F51") +
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  scale_y_continuous(labels = scales::dollar_format(scale = 1e-3, suffix = "k")) +
+  scale_color_manual(values = c(Computing = "#2D6A4F", Mobile = "#52B788",
+                                Accessories = "#D4A017")) +
+  labs(title = "Monthly Revenue by Category — 2023",
+       subtitle = "All categories show a Q4 seasonal uplift",
+       x = NULL, y = "Revenue (USD)", color = "Category") +
+  theme_minimal(base_size = 13) +
+  theme(plot.title = element_text(face = "bold"), legend.position = "bottom")
+```
+
+## 3.3 Units by Region — Faceted Bar Chart
+
+```{r}
+#| fig-height: 6
+
+sales_raw |>
+  group_by(region, product, category) |>
+  summarise(units = sum(units), .groups = "drop") |>
+  mutate(product = fct_reorder(product, units)) |>
+  ggplot(aes(x = units, y = product, fill = category)) +
+  geom_col(width = 0.7) +
+  facet_wrap(~region, ncol = 2) +
+  scale_x_continuous(labels = scales::comma) +
+  scale_fill_manual(values = c(Computing = "#2D6A4F", Mobile = "#52B788",
+                               Accessories = "#D4A017")) +
+  labs(title = "Units Sold by Region and Product",
+       subtitle = "Keyboard dominates unit volume in every region",
+       x = "Units Sold", y = NULL, fill = "Category") +
+  theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(face = "bold"),
+        strip.text = element_text(face = "bold", size = 12),
+        panel.grid.major.y = element_blank(),
+        legend.position = "bottom")
+```
+
+## 3.4 Margin vs Revenue — Scatter Plot
+
+```{r}
+sales_raw |>
+  group_by(product, category, month) |>
+  summarise(revenue = sum(revenue), margin = mean(margin_pct),
+            units = sum(units), .groups = "drop") |>
+  ggplot(aes(x = revenue, y = margin, color = category, size = units)) +
+  geom_point(alpha = 0.65) +
+  geom_smooth(aes(group = category), method = "lm", se = FALSE,
+              linewidth = 0.8, linetype = "dashed") +
+  scale_x_continuous(labels = scales::dollar_format(scale = 1e-3, suffix = "k")) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_size_continuous(range = c(2, 8), labels = scales::comma) +
+  scale_color_manual(values = c(Computing = "#2D6A4F", Mobile = "#52B788",
+                                Accessories = "#D4A017")) +
+  labs(title = "Margin % vs Monthly Revenue",
+       subtitle = "Accessories carry higher margins despite lower revenue",
+       x = "Monthly Revenue", y = "Gross Margin %",
+       color = "Category", size = "Units Sold") +
+  theme_minimal(base_size = 13) +
+  theme(plot.title = element_text(face = "bold"))
+```
+
+## 3.5 Heatmap — Revenue by Product × Month
+
+```{r}
+sales_raw |>
+  group_by(product, month) |>
+  summarise(revenue = sum(revenue), .groups = "drop") |>
+  mutate(month_label = fct_reorder(format(month, "%b"), month)) |>
+  ggplot(aes(x = month_label, y = fct_reorder(product, revenue), fill = revenue)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  geom_text(aes(label = scales::dollar(revenue, scale = 1e-3, suffix = "k", accuracy = 1)),
+            size = 3, color = "white", fontface = "bold") +
+  scale_fill_gradient(low = "#B7E4C7", high = "#1B4332",
+                      labels = scales::dollar_format(scale = 1e-3, suffix = "k")) +
+  labs(title = "Revenue Heatmap — Product x Month",
+       subtitle = "Darker = higher revenue",
+       x = NULL, y = NULL, fill = "Revenue") +
+  theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(face = "bold"),
+        panel.grid = element_blank())
+```
+
+---
+
+# 4. `stringr` & `forcats`
+
+## 4.1 String manipulation
+
+```{r}
+sales_raw |>
+  distinct(product, category) |>
+  mutate(
+    label      = str_glue("[{str_pad(category, 12, 'right')}] {str_to_upper(product)}"),
+    slug       = str_to_lower(str_replace_all(product, " ", "-")),
+    has_mobile = str_detect(category, "Mobile")
+  )
+```
+
+## 4.2 Factor reordering
+
+```{r}
+sales_raw |>
+  mutate(product = fct_reorder(product, revenue, .fun = sum)) |>
+  group_by(product) |>
+  summarise(revenue = sum(revenue)) |>
+  ggplot(aes(x = revenue, y = product)) +
+  geom_col(fill = "#2D6A4F") +
+  scale_x_continuous(labels = scales::dollar_format(scale = 1e-3, suffix = "k")) +
+  labs(title = "fct_reorder() — Products sorted by revenue",
+       x = "Total Revenue", y = NULL) +
+  theme_minimal(base_size = 13) +
+  theme(plot.title = element_text(face = "bold"),
+        panel.grid.major.y = element_blank())
+```
+
+---
+
+# 5. Summary Table
+
+```{r}
+sales_raw |>
+  group_by(category) |>
+  summarise(
+    products      = n_distinct(product),
+    total_revenue = sum(revenue),
+    total_units   = sum(units),
+    avg_margin    = mean(margin_pct)
+  ) |>
+  mutate(
+    total_revenue = scales::dollar(total_revenue, scale = 1e-3, suffix = "k"),
+    total_units   = scales::comma(total_units),
+    avg_margin    = scales::percent(avg_margin, accuracy = 0.1)
+  ) |>
+  rename(Category = category, Products = products, Revenue = total_revenue,
+         Units = total_units, `Avg Margin` = avg_margin) |>
+  knitr::kable(align = c("l","c","r","r","r"))
+```
+
+---
+
+# Key Takeaways
+
+| Package   | What we used it for |
+|-----------|---------------------|
+| `dplyr`   | `group_by`, `summarise`, `mutate`, `filter`, `arrange` |
+| `tidyr`   | `pivot_wider`, `expand_grid` |
+| `ggplot2` | bar, line, scatter, facet, heatmap |
+| `stringr` | `str_glue`, `str_pad`, `str_detect`, `str_to_upper` |
+| `forcats` | `fct_reorder` for sorted factor levels |
+| `scales`  | `dollar`, `percent`, `comma` label formatters |
+
+> **Render:** Click **Render** in RStudio, or run `quarto render tidyverse_demo.qmd` in the terminal.
