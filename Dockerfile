@@ -1,4 +1,4 @@
-FROM rocker/tidyverse:4.6.0
+FROM rocker/tidyverse:4.5.3
 
 # Environment variables
 ENV PATH="${PATH}:/usr/lib/rstudio-server/bin" \
